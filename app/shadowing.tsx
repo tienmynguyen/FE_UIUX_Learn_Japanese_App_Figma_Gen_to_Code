@@ -1,12 +1,15 @@
 import { AppText } from "@/components";
+import { useSession } from "@/hooks/useSession";
 import { useThemeMode } from "@/hooks/useThemeMode";
+import { api, type ShadowingTopic } from "@/services/api";
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import { StatusBar } from "expo-status-bar";
-import { Pressable, ScrollView, View } from "react-native";
+import { useEffect, useState } from "react";
+import { Alert, Pressable, ScrollView, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
-function TopicCard({ onPress, isLightMode }: { onPress?: () => void; isLightMode: boolean }) {
+function TopicCard({ onPress, isLightMode, topic }: { onPress?: () => void; isLightMode: boolean; topic: ShadowingTopic }) {
   return (
     <Pressable
       className={`w-[159px] rounded-[20px] px-[11px] py-[9px] ${isLightMode ? "bg-white" : "bg-[#303A51]"}`}
@@ -17,12 +20,12 @@ function TopicCard({ onPress, isLightMode }: { onPress?: () => void; isLightMode
           <Ionicons name="mic-outline" size={14} color="#9EB0D0" />
         </View>
         <AppText weight="bold" className={`ml-[10px] text-[32px] ${isLightMode ? "text-black" : "text-white"}`}>
-          Công việc
+          {topic.title}
         </AppText>
       </View>
 
       <AppText className={`mt-3 text-[24px] leading-[20px] ${isLightMode ? "text-black" : "text-white"}`}>
-        Các câu giao tiếp cơ bản trong môi trường công sở
+        {topic.description}
       </AppText>
 
       <View className="mt-4 flex-row items-center justify-end">
@@ -37,6 +40,19 @@ function TopicCard({ onPress, isLightMode }: { onPress?: () => void; isLightMode
 
 export default function ShadowingScreen() {
   const { isLightMode } = useThemeMode();
+  const { session } = useSession();
+  const [topics, setTopics] = useState<ShadowingTopic[]>([]);
+
+  useEffect(() => {
+    if (!session) {
+      router.replace("/");
+      return;
+    }
+    api
+      .getShadowingTopics()
+      .then(setTopics)
+      .catch((error) => Alert.alert("Không tải được shadowing", error instanceof Error ? error.message : "Đã có lỗi xảy ra."));
+  }, [session]);
 
   return (
     <SafeAreaView className={`flex-1 ${isLightMode ? "bg-[#EFEFEF]" : "bg-[#0B1220]"}`}>
@@ -61,8 +77,13 @@ export default function ShadowingScreen() {
         showsVerticalScrollIndicator={false}
       >
         <View className="flex-row flex-wrap justify-between gap-y-5">
-          {Array.from({ length: 8 }).map((_, index) => (
-            <TopicCard key={index} onPress={() => router.push("/shadowing-work")} isLightMode={isLightMode} />
+          {topics.map((topic) => (
+            <TopicCard
+              key={topic.id}
+              topic={topic}
+              onPress={() => router.push({ pathname: "/shadowing-work", params: { topicId: topic.id } })}
+              isLightMode={isLightMode}
+            />
           ))}
         </View>
       </ScrollView>

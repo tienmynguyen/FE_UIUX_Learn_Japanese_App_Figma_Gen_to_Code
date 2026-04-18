@@ -1,28 +1,31 @@
 import { AppText } from "@/components";
+import { useSession } from "@/hooks/useSession";
 import { useThemeMode } from "@/hooks/useThemeMode";
+import { api, type ShadowingTopic } from "@/services/api";
 import { Ionicons } from "@expo/vector-icons";
-import { router } from "expo-router";
+import { router, useLocalSearchParams } from "expo-router";
 import { StatusBar } from "expo-status-bar";
-import { Pressable, ScrollView, View } from "react-native";
+import { useEffect, useState } from "react";
+import { Alert, Pressable, ScrollView, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
-function WorkCard({ isLightMode }: { isLightMode: boolean }) {
+function WorkCard({ isLightMode, topic }: { isLightMode: boolean; topic: ShadowingTopic }) {
   return (
     <Pressable
       className={`w-[159px] rounded-[20px] px-[11px] py-[9px] ${isLightMode ? "bg-white" : "bg-[#303A51]"}`}
-      onPress={() => router.push("/shadowing-session")}
+      onPress={() => router.push({ pathname: "/shadowing-session", params: { topicId: topic.id } })}
     >
       <View className="h-[28px] w-[118px] flex-row items-center">
         <View className="h-7 w-[29px] items-center justify-center rounded-[10px] bg-[#465473]">
           <Ionicons name="mic-outline" size={14} color="#9EB0D0" />
         </View>
         <AppText weight="bold" className={`ml-[10px] text-[32px] ${isLightMode ? "text-black" : "text-white"}`}>
-          Công việc
+          {topic.title}
         </AppText>
       </View>
 
       <AppText className={`mt-3 text-[24px] leading-[20px] ${isLightMode ? "text-black" : "text-white"}`}>
-        Các câu giao tiếp cơ bản trong môi trường công sở
+        {topic.description}
       </AppText>
 
       <View className="mt-4 flex-row items-center justify-end">
@@ -37,6 +40,27 @@ function WorkCard({ isLightMode }: { isLightMode: boolean }) {
 
 export default function ShadowingWorkScreen() {
   const { isLightMode } = useThemeMode();
+  const { session } = useSession();
+  const params = useLocalSearchParams<{ topicId?: string }>();
+  const [topics, setTopics] = useState<ShadowingTopic[]>([]);
+
+  useEffect(() => {
+    if (!session) {
+      router.replace("/");
+      return;
+    }
+    api
+      .getShadowingTopics()
+      .then((items) => {
+        if (params.topicId) {
+          const selected = items.find((item) => item.id === params.topicId);
+          setTopics(selected ? [selected] : items);
+          return;
+        }
+        setTopics(items);
+      })
+      .catch((error) => Alert.alert("Không tải được shadowing", error instanceof Error ? error.message : "Đã có lỗi xảy ra."));
+  }, [params.topicId, session]);
 
   return (
     <SafeAreaView className={`flex-1 ${isLightMode ? "bg-[#EFEFEF]" : "bg-[#0B1220]"}`}>
@@ -61,8 +85,8 @@ export default function ShadowingWorkScreen() {
         showsVerticalScrollIndicator={false}
       >
         <View className="flex-row flex-wrap justify-between gap-y-5">
-          {Array.from({ length: 8 }).map((_, index) => (
-            <WorkCard key={index} isLightMode={isLightMode} />
+          {topics.map((topic) => (
+            <WorkCard key={topic.id} topic={topic} isLightMode={isLightMode} />
           ))}
         </View>
       </ScrollView>

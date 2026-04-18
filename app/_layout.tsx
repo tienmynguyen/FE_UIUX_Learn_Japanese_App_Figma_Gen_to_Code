@@ -1,4 +1,5 @@
 import { useThemeMode, ThemeModeProvider } from "@/hooks/useThemeMode";
+import { SessionProvider } from "@/hooks/useSession";
 import { Stack } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { SafeAreaProvider } from "react-native-safe-area-context";
@@ -35,9 +36,11 @@ function RootNavigator() {
 export default function RootLayout() {
   return (
     <SafeAreaProvider>
-      <ThemeModeProvider>
-        <RootNavigator />
-      </ThemeModeProvider>
+      <SessionProvider>
+        <ThemeModeProvider>
+          <RootNavigator />
+        </ThemeModeProvider>
+      </SessionProvider>
     </SafeAreaProvider>
   );
 }

@@ -1,10 +1,12 @@
 import { AppText } from "@/components";
+import { useSession } from "@/hooks/useSession";
 import { useThemeMode } from "@/hooks/useThemeMode";
+import { api, getApiBaseUrl } from "@/services/api";
 import { Ionicons } from "@expo/vector-icons";
-import { router } from "expo-router";
+import { router, useLocalSearchParams } from "expo-router";
 import { StatusBar } from "expo-status-bar";
-import { useState } from "react";
-import { Image, Pressable, View } from "react-native";
+import { useEffect, useState } from "react";
+import { Alert, Image, Pressable, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 const FIRST_RESULT_IMAGE_URI = "https://www.figma.com/api/mcp/asset/94a2acb0-26fe-4779-bee3-bf5b2ecd6b2d";
@@ -12,8 +14,46 @@ const FINAL_RESULT_IMAGE_URI = "https://www.figma.com/api/mcp/asset/e7d9a369-e5b
 
 export default function ShadowingSessionScreen() {
   const { isLightMode } = useThemeMode();
+  const { session } = useSession();
+  const params = useLocalSearchParams<{ topicId?: string }>();
+  const [topicTitle, setTopicTitle] = useState("Công việc");
+  const [topicDesc, setTopicDesc] = useState("các câu giao tiếp cơ bản trong môi trường công sở");
   const [showResult, setShowResult] = useState<"none" | "first" | "final">("none");
   const [isFinalRound, setIsFinalRound] = useState(false);
+
+  useEffect(() => {
+    if (!session) {
+      router.replace("/");
+      return;
+    }
+    if (!params.topicId) return;
+    api
+      .getShadowingTopics()
+      .then((topics) => {
+        const topic = topics.find((item) => item.id === params.topicId);
+        if (topic) {
+          setTopicTitle(topic.title);
+          setTopicDesc(topic.description);
+        }
+      })
+      .catch((error) => Alert.alert("Không tải được phiên học", error instanceof Error ? error.message : "Đã có lỗi xảy ra."));
+  }, [params.topicId, session]);
+
+  const submitScore = async (score: number, round: number) => {
+    if (!params.topicId) return;
+    try {
+      await fetch(
+        `${getApiBaseUrl()}/api/shadowing/topics/${params.topicId}/score`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ score, round }),
+        }
+      );
+    } catch {
+      // Ignore score submit failure in UI flow.
+    }
+  };
 
   return (
     <SafeAreaView className={`flex-1 ${isLightMode ? "bg-[#EFEFEF]" : "bg-[#0B1220]"}`}>
@@ -27,10 +67,10 @@ export default function ShadowingSessionScreen() {
 
       <View className="px-[22px] pt-1">
         <AppText weight="bold" className={`text-[48px] ${isLightMode ? "text-black" : "text-white"}`}>
-          Công việc
+          {topicTitle}
         </AppText>
         <AppText className={`mt-1 text-[28px] ${isLightMode ? "text-[#444444]" : "text-[rgba(255,255,255,0.7)]"}`}>
-          các câu giao tiếp cơ bản trong môi trường công sở
+          {topicDesc}
         </AppText>
       </View>
 
@@ -99,7 +139,10 @@ export default function ShadowingSessionScreen() {
 
           <Pressable
             className="absolute right-0 top-[66px] h-[36px] w-[111px] items-center justify-center rounded-[15px] bg-[#3F7D41]"
-            onPress={() => setShowResult(isFinalRound ? "final" : "first")}
+            onPress={async () => {
+              await submitScore(isFinalRound ? 697.7 : 72.5, isFinalRound ? 10 : 1);
+              setShowResult(isFinalRound ? "final" : "first");
+            }}
           >
             <AppText weight="bold" className="text-[24px] text-white">
               Chấm & Tiếp

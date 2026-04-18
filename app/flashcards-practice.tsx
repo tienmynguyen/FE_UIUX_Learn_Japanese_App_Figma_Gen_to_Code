@@ -1,10 +1,12 @@
-import { AppText } from "@/components";
+import { AppText, KeyboardAvoidingSheet } from "@/components";
+import { useSession } from "@/hooks/useSession";
 import { useThemeMode } from "@/hooks/useThemeMode";
+import { api, type Card, type Deck } from "@/services/api";
 import { Ionicons, Feather } from "@expo/vector-icons";
-import { router } from "expo-router";
+import { router, useLocalSearchParams } from "expo-router";
 import { StatusBar } from "expo-status-bar";
-import { useState } from "react";
-import { Pressable, ScrollView, TextInput, View } from "react-native";
+import { useEffect, useMemo, useState } from "react";
+import { Alert, Pressable, ScrollView, TextInput, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 type PracticeCardProps = {
@@ -40,22 +42,131 @@ function PracticeCard({ word, reading, isLightMode, onPress }: PracticeCardProps
 
 export default function FlashcardsPracticeScreen() {
   const { isLightMode } = useThemeMode();
+  const { session } = useSession();
+  const { deckId: deckIdParam } = useLocalSearchParams<{ deckId?: string }>();
+  const deckIdFromRoute =
+    typeof deckIdParam === "string" ? deckIdParam : Array.isArray(deckIdParam) ? deckIdParam[0] : undefined;
+  const [deck, setDeck] = useState<Deck | null>(null);
   const [isShareEnabled, setIsShareEnabled] = useState(false);
+  const [shareLink, setShareLink] = useState("");
   const [showShareModal, setShowShareModal] = useState(false);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [vocabulary, setVocabulary] = useState("");
   const [phonetic, setPhonetic] = useState("Tự động điền");
   const [meaning, setMeaning] = useState("");
-  const [editVocabulary, setEditVocabulary] = useState("手法");
-  const [editPhonetic, setEditPhonetic] = useState("しゅほう");
-  const [editMeaning, setEditMeaning] = useState("Phương Pháp");
-  const shareLink = "htt://yourdomain.com/flashcards/7959934329r92f82342?seltd=284fsj4hheee41324455611";
+  const [selectedCard, setSelectedCard] = useState<Card | null>(null);
+  const [editVocabulary, setEditVocabulary] = useState("");
+  const [editPhonetic, setEditPhonetic] = useState("");
+  const [editMeaning, setEditMeaning] = useState("");
+
+  useEffect(() => {
+    if (!session) {
+      router.replace("/");
+      return;
+    }
+
+    const loadDeck = async () => {
+      try {
+        const decks = await api.getDecks(session.userId);
+        if (decks.length === 0) {
+          setDeck(null);
+          return;
+        }
+        const pick =
+          deckIdFromRoute && decks.some((d) => d.id === deckIdFromRoute)
+            ? decks.find((d) => d.id === deckIdFromRoute)!
+            : decks[0];
+        setDeck(pick);
+        setIsShareEnabled(Boolean(pick.shareEnabled));
+        setShareLink(pick.shareLink ?? "");
+      } catch (error) {
+        Alert.alert("Không tải được flashcards", error instanceof Error ? error.message : "Đã có lỗi xảy ra.");
+      }
+    };
+
+    loadDeck();
+  }, [session, deckIdFromRoute]);
+
+  const cards = useMemo(() => deck?.cards ?? [], [deck]);
 
   const closeAllModals = () => {
     setShowShareModal(false);
     setShowCreateModal(false);
     setShowEditModal(false);
+  };
+
+  const refreshDeck = async () => {
+    if (!session) return;
+    const decks = await api.getDecks(session.userId);
+    if (decks.length === 0) {
+      setDeck(null);
+      return;
+    }
+    const currentId = deck?.id;
+    const pick =
+      currentId && decks.some((d) => d.id === currentId)
+        ? decks.find((d) => d.id === currentId)!
+        : deckIdFromRoute && decks.some((d) => d.id === deckIdFromRoute)
+          ? decks.find((d) => d.id === deckIdFromRoute)!
+          : decks[0];
+    setDeck(pick);
+    setIsShareEnabled(Boolean(pick.shareEnabled));
+    setShareLink(pick.shareLink ?? "");
+  };
+
+  const openEditCard = (card: Card) => {
+    closeAllModals();
+    setSelectedCard(card);
+    setEditVocabulary(card.vocabulary);
+    setEditPhonetic(card.phonetic);
+    setEditMeaning(card.meaning);
+    setShowEditModal(true);
+  };
+
+  const handleCreateCard = async () => {
+    if (!session || !deck) return;
+    try {
+      await api.createCard(session.userId, deck.id, {
+        vocabulary,
+        phonetic,
+        meaning,
+        imageUrl: null,
+      });
+      setVocabulary("");
+      setPhonetic("Tự động điền");
+      setMeaning("");
+      setShowCreateModal(false);
+      await refreshDeck();
+    } catch (error) {
+      Alert.alert("Không thể thêm thẻ", error instanceof Error ? error.message : "Đã có lỗi xảy ra.");
+    }
+  };
+
+  const handleUpdateCard = async () => {
+    if (!session || !deck || !selectedCard) return;
+    try {
+      await api.updateCard(session.userId, deck.id, selectedCard.id, {
+        vocabulary: editVocabulary,
+        phonetic: editPhonetic,
+        meaning: editMeaning,
+      });
+      setShowEditModal(false);
+      await refreshDeck();
+    } catch (error) {
+      Alert.alert("Không thể sửa thẻ", error instanceof Error ? error.message : "Đã có lỗi xảy ra.");
+    }
+  };
+
+  const toggleShare = async (enabled: boolean) => {
+    if (!session || !deck) return;
+    try {
+      const result = await api.setDeckShare(session.userId, deck.id, enabled);
+      setIsShareEnabled(result.shareEnabled);
+      setShareLink(result.shareLink ?? "");
+    } catch (error) {
+      Alert.alert("Không thể cập nhật chia sẻ", error instanceof Error ? error.message : "Đã có lỗi xảy ra.");
+    }
   };
 
   return (
@@ -70,15 +181,20 @@ export default function FlashcardsPracticeScreen() {
 
           <View className="mr-auto">
             <AppText weight="bold" className={`text-[30px] ${isLightMode ? "text-[#0F172A]" : "text-[#F8FAFC]"}`}>
-              29/03
+              {deck?.title ?? "Flashcards"}
             </AppText>
-            <AppText className={`-mt-1 text-[13px] ${isLightMode ? "text-[#738CB4]" : "text-[#F8FAFC]"}`}>62 thẻ</AppText>
+            <AppText className={`-mt-1 text-[13px] ${isLightMode ? "text-[#738CB4]" : "text-[#F8FAFC]"}`}>
+              {cards.length} thẻ
+            </AppText>
           </View>
 
           <View className="flex-row gap-3">
             <Pressable
               className="h-[50px] w-[50px] items-center justify-center rounded-full bg-[#10B981]"
-              onPress={() => router.push("/flashcards-quiz")}
+              onPress={() => {
+                if (!deck) return;
+                router.push({ pathname: "/flashcards-quiz", params: { deckId: deck.id } });
+              }}
             >
               <Ionicons name="play" size={18} color="white" />
             </Pressable>
@@ -120,43 +236,22 @@ export default function FlashcardsPracticeScreen() {
       <View className={`flex-1 px-5 pt-5 ${isLightMode ? "bg-[#F8FBFF]" : "bg-[#141E37]"}`}>
         <ScrollView contentContainerStyle={{ paddingBottom: 40 }} showsVerticalScrollIndicator={false}>
           <View className="gap-6">
-            <PracticeCard
-              word="手法"
-              reading="/しゅほう/"
-              isLightMode={isLightMode}
-              onPress={() => {
-                closeAllModals();
-                setShowEditModal(true);
-              }}
-            />
-            <PracticeCard
-              word="階層的な"
-              reading="/かいそうてきな/"
-              isLightMode={isLightMode}
-              onPress={() => {
-                closeAllModals();
-                setShowEditModal(true);
-              }}
-            />
-            <PracticeCard
-              word="オブジェクト指向"
-              reading=""
-              isLightMode={isLightMode}
-              onPress={() => {
-                closeAllModals();
-                setShowEditModal(true);
-              }}
-            />
+            {cards.map((card) => (
+              <PracticeCard
+                key={card.id}
+                word={card.vocabulary}
+                reading={card.phonetic ? `/${card.phonetic}/` : ""}
+                isLightMode={isLightMode}
+                onPress={() => openEditCard(card)}
+              />
+            ))}
           </View>
         </ScrollView>
       </View>
 
-      {(showShareModal || showCreateModal || showEditModal) && (
-        <Pressable className="absolute inset-0 bg-black/70" onPress={closeAllModals} />
-      )}
-
       {showShareModal && !isShareEnabled && (
-        <View className="absolute bottom-0 left-0 right-0 rounded-t-[20px] bg-white px-6 pb-12 pt-9">
+        <KeyboardAvoidingSheet visible onBackdropPress={closeAllModals}>
+        <View className="rounded-t-[20px] bg-white px-6 pb-12 pt-9">
           <AppText weight="bold" className="text-[24px] text-black">
             Chia sẻ bộ thẻ
           </AppText>
@@ -177,7 +272,7 @@ export default function FlashcardsPracticeScreen() {
             </Pressable>
             <Pressable
               className="h-[53px] flex-1 items-center justify-center rounded-[10px] bg-[#10B981]"
-              onPress={() => setIsShareEnabled(true)}
+              onPress={() => toggleShare(true)}
             >
               <AppText weight="semibold" className="text-[16px] text-white">
                 Đồng ý bật chia sẻ
@@ -185,10 +280,12 @@ export default function FlashcardsPracticeScreen() {
             </Pressable>
           </View>
         </View>
+        </KeyboardAvoidingSheet>
       )}
 
       {showShareModal && isShareEnabled && (
-        <View className="absolute bottom-0 left-0 right-0 rounded-t-[20px] bg-white px-6 pb-7 pt-8">
+        <KeyboardAvoidingSheet visible onBackdropPress={closeAllModals}>
+        <View className="rounded-t-[20px] bg-white px-6 pb-7 pt-8">
           <AppText weight="bold" className="text-[24px] text-black">
             Chia sẻ bộ thẻ
           </AppText>
@@ -200,7 +297,7 @@ export default function FlashcardsPracticeScreen() {
           </AppText>
 
           <View className="mt-5 rounded-[10px] bg-[#F3F4F6] p-4">
-            <AppText weight="bold" className="text-center text-[14px] leading-[20px] text-[#72757F]">
+            <AppText weight="bold" className="text-center text-[14px] leading-[20px] text-[#72757F]" numberOfLines={3}>
               {shareLink}
             </AppText>
           </View>
@@ -212,7 +309,7 @@ export default function FlashcardsPracticeScreen() {
           </Pressable>
           <Pressable
             className="mt-4 h-[50px] items-center justify-center rounded-[15px] bg-[#EF4444]"
-            onPress={() => setIsShareEnabled(false)}
+            onPress={() => toggleShare(false)}
           >
             <AppText weight="semibold" className="text-[16px] text-white">
               Huỷ chia sẻ
@@ -224,10 +321,12 @@ export default function FlashcardsPracticeScreen() {
             </AppText>
           </Pressable>
         </View>
+        </KeyboardAvoidingSheet>
       )}
 
       {showCreateModal && (
-        <View className="absolute bottom-0 left-0 right-0 rounded-t-[20px] bg-white px-5 pb-4 pt-6">
+        <KeyboardAvoidingSheet visible onBackdropPress={closeAllModals}>
+        <View className="rounded-t-[20px] bg-white px-5 pb-4 pt-6">
           <View className="flex-row items-center justify-between">
             <AppText weight="bold" className="text-[30px] text-[#181818]">
               Add Flashcard
@@ -285,17 +384,19 @@ export default function FlashcardsPracticeScreen() {
                 Cancel
               </AppText>
             </Pressable>
-            <Pressable className="h-[43px] flex-1 items-center justify-center rounded-[10px] bg-[#007BFF]" onPress={closeAllModals}>
+            <Pressable className="h-[43px] flex-1 items-center justify-center rounded-[10px] bg-[#007BFF]" onPress={handleCreateCard}>
               <AppText weight="semibold" className="text-[16px] text-white">
                 Create
               </AppText>
             </Pressable>
           </View>
         </View>
+        </KeyboardAvoidingSheet>
       )}
 
       {showEditModal && (
-        <View className="absolute bottom-0 left-0 right-0 rounded-t-[20px] bg-white px-5 pb-4 pt-6">
+        <KeyboardAvoidingSheet visible onBackdropPress={closeAllModals}>
+        <View className="rounded-t-[20px] bg-white px-5 pb-4 pt-6">
           <View className="flex-row items-center justify-between">
             <AppText weight="bold" className="text-[30px] text-[#181818]">
               Edit Flashcard
@@ -349,13 +450,14 @@ export default function FlashcardsPracticeScreen() {
                 Cancel
               </AppText>
             </Pressable>
-            <Pressable className="h-[43px] flex-1 items-center justify-center rounded-[10px] bg-[#007BFF]" onPress={closeAllModals}>
+            <Pressable className="h-[43px] flex-1 items-center justify-center rounded-[10px] bg-[#007BFF]" onPress={handleUpdateCard}>
               <AppText weight="semibold" className="text-[16px] text-white">
                 Change
               </AppText>
             </Pressable>
           </View>
         </View>
+        </KeyboardAvoidingSheet>
       )}
     </SafeAreaView>
   );

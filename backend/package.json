@@ -1,0 +1,19 @@
+{
+  "name": "appgen-backend-worker",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev --ip 0.0.0.0 --port 8789",
+    "deploy": "wrangler deploy",
+    "check": "tsc --noEmit"
+  },
+  "dependencies": {
+    "hono": "^4.8.3"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20260409.0",
+    "typescript": "^5.8.3",
+    "wrangler": "^4.11.1"
+  }
+}

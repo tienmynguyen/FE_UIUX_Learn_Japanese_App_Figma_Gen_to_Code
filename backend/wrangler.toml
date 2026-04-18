@@ -1,0 +1,6 @@
+name = "appgen-backend"
+main = "src/index.ts"
+compatibility_date = "2026-04-18"
+
+[observability]
+enabled = true

@@ -3,22 +3,69 @@ import { useThemeMode } from "@/hooks/useThemeMode";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import { router, useLocalSearchParams } from "expo-router";
 import { StatusBar } from "expo-status-bar";
-import { View, Pressable } from "react-native";
+import { useMemo } from "react";
+import { Pressable, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+
+function parseIntParam(v: string | string[] | undefined, fallback: number): number {
+  const raw = Array.isArray(v) ? v[0] : v;
+  const n = parseInt(String(raw ?? ""), 10);
+  return Number.isFinite(n) ? n : fallback;
+}
 
 export default function FlashcardsQuizResultScreen() {
   const { isLightMode } = useThemeMode();
-  const params = useLocalSearchParams<{ result?: string }>();
-  const isSuccess = params.result === "success";
+  const params = useLocalSearchParams<{
+    result?: string;
+    correct?: string;
+    total?: string;
+    percent?: string;
+  }>();
 
-  const title = isSuccess ? "Hoàn hảo!" : "Cố lên!";
-  const badge = isSuccess ? "SS" : "C";
-  const subtitle = isSuccess ? "Bạn là thiên tài! 🌟" : "Cố gắng lần sau nhé! 📚";
-  const percent = isSuccess ? "100%" : "60%";
-  const scoreLabel = isSuccess ? "5/5" : "3/5";
-  const rankLabel = isSuccess ? "SS" : "C";
-  const timeLabel = isSuccess ? "0:30" : "0:21";
-  const progressBarClass = isSuccess ? "w-full bg-[#FBBF24]" : "w-[60%] bg-[#F87171]";
+  const hasStats = params.correct !== undefined && params.total !== undefined;
+  const total = Math.max(1, parseIntParam(params.total, 1));
+  const correct = hasStats
+    ? Math.min(total, Math.max(0, parseIntParam(params.correct, 0)))
+    : params.result === "success"
+      ? total
+      : 0;
+  const percentNum = hasStats
+    ? Math.min(100, Math.max(0, parseIntParam(params.percent, Math.round((correct / total) * 100))))
+    : params.result === "success"
+      ? 100
+      : 60;
+
+  const isPerfect = correct === total;
+  const isSuccess = params.result === "success" || percentNum >= 70;
+
+  const { title, subtitle, badge, rankLabel } = useMemo(() => {
+    if (isPerfect) {
+      return {
+        title: "Hoàn hảo!",
+        subtitle: "Bạn làm đúng hết các câu! 🌟",
+        badge: "SS",
+        rankLabel: "SS",
+      };
+    }
+    if (isSuccess) {
+      return {
+        title: "Rất tốt!",
+        subtitle: `Đúng ${correct}/${total} câu — tiếp tục cố gắng nhé! 📚`,
+        badge: "A",
+        rankLabel: "A",
+      };
+    }
+    return {
+      title: "Cố lên!",
+      subtitle: `Đúng ${correct}/${total} câu — ôn lại từ vựng nhé! 📚`,
+      badge: "C",
+      rankLabel: "C",
+    };
+  }, [isPerfect, isSuccess, correct, total]);
+
+  const percentLabel = `${percentNum}%`;
+  const scoreLabel = `${correct}/${total}`;
+  const timeLabel = "—";
 
   return (
     <SafeAreaView className={`flex-1 ${isLightMode ? "bg-white" : "bg-[#0B1220]"}`}>
@@ -40,10 +87,10 @@ export default function FlashcardsQuizResultScreen() {
             <AppText weight="bold" className="mt-3 text-[30px] text-white">
               {title}
             </AppText>
-            <AppText className="mt-1 text-[16px] text-white">{subtitle}</AppText>
+            <AppText className="mt-1 px-2 text-center text-[16px] text-white">{subtitle}</AppText>
             <View className="mt-4 h-[82px] w-[82px] items-center justify-center rounded-full border-2 border-white">
               <AppText weight="bold" className="text-[20px] text-white">
-                {percent}
+                {percentLabel}
               </AppText>
             </View>
           </View>
@@ -75,7 +122,7 @@ export default function FlashcardsQuizResultScreen() {
             <Ionicons name="flash" size={26} color="#E9D5FF" />
             <AppText className="mt-1 text-[14px] text-[#E9D5FF]">Chế độ</AppText>
             <AppText weight="bold" className="mt-2 text-[30px] text-white">
-              Speed
+              Quiz
             </AppText>
           </View>
         </View>
@@ -85,7 +132,10 @@ export default function FlashcardsQuizResultScreen() {
             Phân tích kết quả
           </AppText>
           <View className={`mt-3 h-3 rounded-full ${isLightMode ? "bg-white" : "bg-[#374151]"}`}>
-            <View className={`h-3 rounded-full ${progressBarClass}`} />
+            <View
+              className={`h-3 rounded-full bg-[#22C55E]`}
+              style={{ width: `${percentNum}%` }}
+            />
           </View>
           {isLightMode && (
             <View className="mt-5 flex-row items-center justify-around">
@@ -99,7 +149,7 @@ export default function FlashcardsQuizResultScreen() {
               </View>
               <View className="items-center">
                 <View className="h-2 w-2 rounded-full bg-[#64748B]" />
-                <AppText className="mt-1 text-[12px] text-[#64748B]">Tổng</AppText>
+                <AppText className="mt-1 text-[12px] text-[#64748B]">Tổng {total}</AppText>
               </View>
             </View>
           )}

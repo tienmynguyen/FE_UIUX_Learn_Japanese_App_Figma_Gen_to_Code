@@ -1,38 +1,39 @@
 import { AppText } from "@/components";
+import { useSession } from "@/hooks/useSession";
 import { useThemeMode } from "@/hooks/useThemeMode";
+import { api, type Book } from "@/services/api";
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import { StatusBar } from "expo-status-bar";
-import { Image, Pressable, View } from "react-native";
+import { useEffect, useState } from "react";
+import { Alert, Image, Pressable, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
-const BOOK_COVER_URI = "https://www.figma.com/api/mcp/asset/b28d36ed-7fef-4547-9e23-27d957bb29d2";
-
-function BookItem({ isLightMode }: { isLightMode: boolean }) {
+function BookItem({ isLightMode, book }: { isLightMode: boolean; book: Book }) {
   return (
     <Pressable
       className={`w-full flex-row items-center rounded-[20px] px-[18px] py-[13px] ${
         isLightMode ? "bg-white" : "bg-[#303A51]"
       }`}
-      onPress={() => router.push("/bilingual-reader")}
+      onPress={() => router.push({ pathname: "/bilingual-reader", params: { bookId: book.id } })}
     >
-      <Image source={{ uri: BOOK_COVER_URI }} className="h-[106px] w-[77px]" resizeMode="cover" />
+      <Image source={{ uri: book.coverUrl }} className="h-[106px] w-[77px]" resizeMode="cover" />
 
       <View className="ml-[23px] flex-1">
         <AppText weight="bold" className={`text-[31px] ${isLightMode ? "text-black" : "text-white"}`}>
-          Một ngày của Yumi
+          {book.title}
         </AppText>
         <AppText weight="bold" className={`mt-1 text-[24px] ${isLightMode ? "text-[#363636]" : "text-[rgba(255,255,255,0.7)]"}`}>
-          B.B
+          {book.author}
         </AppText>
         <View className="mt-3 flex-row items-center">
           <View className="h-[18px] w-[23px] items-center justify-center rounded-[5px] bg-[#737373]">
             <AppText weight="bold" className="text-[21px] text-white">
-              N5
+              {book.level}
             </AppText>
           </View>
           <AppText weight="bold" className={`ml-8 text-[24px] ${isLightMode ? "text-[#363636]" : "text-[rgba(255,255,255,0.7)]"}`}>
-            3 chương
+            {book.chapters} chương
           </AppText>
         </View>
       </View>
@@ -46,6 +47,19 @@ function BookItem({ isLightMode }: { isLightMode: boolean }) {
 
 export default function BilingualBooksScreen() {
   const { isLightMode } = useThemeMode();
+  const { session } = useSession();
+  const [books, setBooks] = useState<Book[]>([]);
+
+  useEffect(() => {
+    if (!session) {
+      router.replace("/");
+      return;
+    }
+    api
+      .getBooks()
+      .then(setBooks)
+      .catch((error) => Alert.alert("Không tải được sách", error instanceof Error ? error.message : "Đã có lỗi xảy ra."));
+  }, [session]);
 
   return (
     <SafeAreaView className={`flex-1 ${isLightMode ? "bg-[#EFEFEF]" : "bg-[#0B1220]"}`}>
@@ -62,9 +76,9 @@ export default function BilingualBooksScreen() {
       </View>
 
       <View className="mt-6 gap-[10px] px-[30px]">
-        <BookItem isLightMode={isLightMode} />
-        <BookItem isLightMode={isLightMode} />
-        <BookItem isLightMode={isLightMode} />
+        {books.map((book) => (
+          <BookItem key={book.id} isLightMode={isLightMode} book={book} />
+        ))}
       </View>
     </SafeAreaView>
   );

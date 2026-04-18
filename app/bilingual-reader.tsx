@@ -1,31 +1,43 @@
 import { AppText } from "@/components";
+import { useSession } from "@/hooks/useSession";
 import { useThemeMode } from "@/hooks/useThemeMode";
+import { api } from "@/services/api";
 import { Feather, Ionicons } from "@expo/vector-icons";
-import { router } from "expo-router";
+import { router, useLocalSearchParams } from "expo-router";
 import { StatusBar } from "expo-status-bar";
-import { useState } from "react";
-import { Image, Pressable, ScrollView, View } from "react-native";
+import { useEffect, useState } from "react";
+import { Alert, Image, Pressable, ScrollView, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 const BOOK_COVER_URI = "https://www.figma.com/api/mcp/asset/f45447a4-5216-4be6-96d0-0be7ded04fc6";
 
-const CONTENT_TEXT = `週末は、家族と公園へ行くだけではありません。私はよく友達とハノイの旧市街へ遊びに行きます。旧市街はとてもにぎやかで、古い建物がたくさんあります。私たちはそこで写真を撮ったり、有名な「フォー」を食べたりします。ハノイのフォーは世界で一番美味しいと思います。
-Cuối tuần không chỉ dừng lại ở việc đi công viên cùng gia đình. Tôi thường cùng bạn bè lên khu Phố Cổ Hà Nội chơi. Phố Cổ lúc nào cũng nhộn nhịp với rất nhiều tòa nhà cổ kính. Chúng tôi chụp ảnh và cùng nhau ăn món "Phở" nổi tiếng. Tôi nghĩ Phở Hà Nội là món ăn ngon nhất trên thế giới.
-最近、私は日本語をもっと一生懸命勉強しています。母が日本語の先生ですから、家でも時々母と日本語で話します。でも、母は厳しい先生になりますから、少し緊張します。私の夢は、いつか日本へ留学することです。日本の桜の花を自分の目で見たいです。そして、日本の古いお寺や現代的な秋葉原の街を歩いてみたいです。
-Dạo gần đây, tôi đang học tiếng Nhật chăm chỉ hơn. Vì mẹ là giáo viên tiếng Nhật nên đôi khi ở nhà tôi cũng tập nói chuyện với mẹ bằng tiếng Nhật. Tuy nhiên, lúc đó mẹ trở thành một giáo viên khá nghiêm khắc khiến tôi có chút hồi hộp. Ước mơ của tôi là một ngày nào đó sẽ được đi du học Nhật Bản. Tôi muốn tận mắt ngắm nhìn hoa anh đào và dạo bước qua những ngôi đền cổ kính hay những con phố Akihabara hiện đại.
-兄たちはいつも私を応援してくれます。上の兄は経済を勉強していて、下の兄はITを勉強しています。二人とも頭がいいです。時々、宿題が難しいとき、兄たちに教えてもらいます。その代わりに、私は兄たちのために美味しいお茶を淹れます。
-
-私の家には小さな猫がいます。名前は「タマ」です。タマは白くて、とても可愛いです。私が勉強しているとき、タマはいつも机の上に来て、一緒に本を見ています。タマがいるから、私の家はもっと明るくなります。
-Các anh trai luôn ủng hộ tôi hết mình. Anh cả học về kinh tế, còn anh thứ học về Công nghệ thông tin. Cả hai đều rất thông minh. Thỉnh thoảng khi gặp bài tập khó, các anh lại giảng giải cho tôi. Đổi lại, tôi thường pha những tách trà thật ngon cho các anh.
-
-Nhà tôi còn có một chú mèo nhỏ tên là "Tama". Tama có bộ lông trắng muốt và rất đáng yêu. Mỗi khi tôi học bài, nó lại nhảy lên bàn và nhìn vào sách cùng tôi. Có Tama, ngôi nhà của tôi trở nên ấm áp và vui vẻ hơn hẳn.
-将来、日本で働いて、いつか両親を日本へ招待したいです。それが私の目標です。毎日忙しいですが、家族や友達と一緒に過ごす時間は私にとって一番の宝物です。これからも、一日一日を大切にして、一生懸命頑張りたいと思います。
-Trong tương lai, tôi muốn làm việc tại Nhật Bản và một ngày nào đó sẽ mời bố mẹ sang Nhật chơi. Đó chính là mục tiêu lớn nhất của tôi. Dù mỗi ngày đều bận rộn, nhưng thời gian ở bên gia đình và bạn bè là báu vật quý giá nhất đối với tôi. Từ giờ trở đi, tôi sẽ trân trọng từng ngày và cố gắng hết sức mình.`;
-
 export default function BilingualReaderScreen() {
   const { isLightMode } = useThemeMode();
+  const { session } = useSession();
+  const params = useLocalSearchParams<{ bookId?: string }>();
+  const [bookTitle, setBookTitle] = useState("Một ngày của Yumi");
+  const [bookLevel, setBookLevel] = useState("N5");
+  const [bookCover, setBookCover] = useState(BOOK_COVER_URI);
+  const [contentText, setContentText] = useState("Đang tải nội dung...");
   const [showSettingsPopup, setShowSettingsPopup] = useState(false);
   const [readerFontSize, setReaderFontSize] = useState(16);
+
+  useEffect(() => {
+    if (!session) {
+      router.replace("/");
+      return;
+    }
+    const bookId = params.bookId ?? "book-yumi";
+    api
+      .getBook(bookId)
+      .then((book) => {
+        setBookTitle(book.title);
+        setBookLevel(book.level);
+        setBookCover(book.coverUrl);
+        setContentText(book.content);
+      })
+      .catch((error) => Alert.alert("Không tải được sách", error instanceof Error ? error.message : "Đã có lỗi xảy ra."));
+  }, [params.bookId, session]);
 
   return (
     <SafeAreaView className={`flex-1 ${isLightMode ? "bg-[#EFEFEF]" : "bg-[#0B1220]"}`}>
@@ -42,15 +54,15 @@ export default function BilingualReaderScreen() {
       </Pressable>
 
       <View className={`mx-[21px] mt-[24px] rounded-[20px] px-[19px] pb-5 pt-[77px] ${isLightMode ? "bg-[#C2C7CE]" : "bg-[#303A51]"}`}>
-        <Image source={{ uri: BOOK_COVER_URI }} className="absolute left-[137px] top-[6px] h-[84px] w-[75px] rounded-[10px]" />
+        <Image source={{ uri: bookCover }} className="absolute left-[137px] top-[6px] h-[84px] w-[75px] rounded-[10px]" />
 
         <View className="min-h-[94px] flex-row items-center rounded-[15px] bg-white px-5 py-3">
           <Ionicons name="information-circle-outline" size={24} color="#0B1220" />
           <View className="mx-4 flex-1 items-center">
             <AppText weight="bold" className="text-[18px] text-[#0F0F0F]">
-              Một ngày của Yumi
+              {bookTitle}
             </AppText>
-            <AppText className="text-[14px] text-[rgba(0,0,0,0.6)]">sách dành cho trình độ từ N5</AppText>
+            <AppText className="text-[14px] text-[rgba(0,0,0,0.6)]">sách dành cho trình độ từ {bookLevel}</AppText>
             <AppText weight="bold" className="text-[18px] text-black">
               {"<   CHƯƠNG 1   >"}
             </AppText>
@@ -63,7 +75,7 @@ export default function BilingualReaderScreen() {
         <View className="mt-[29px] max-h-[611px] min-h-[460px] rounded-[15px] bg-white px-4 py-4">
           <ScrollView showsVerticalScrollIndicator={false}>
             <AppText className="text-black" style={{ fontSize: readerFontSize, lineHeight: Math.round(readerFontSize * 1.6) }}>
-              {CONTENT_TEXT}
+              {contentText}
             </AppText>
           </ScrollView>
         </View>

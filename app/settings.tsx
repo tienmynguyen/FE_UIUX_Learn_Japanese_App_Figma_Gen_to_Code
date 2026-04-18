@@ -1,11 +1,13 @@
-import { AppText as BaseText } from "@/components";
+import { AppText as BaseText, KeyboardAvoidingSheet } from "@/components";
+import { useSession } from "@/hooks/useSession";
 import { useThemeMode } from "@/hooks/useThemeMode";
+import { api } from "@/services/api";
 import { Feather, Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import { StatusBar } from "expo-status-bar";
-import { useState, type ComponentProps, type ReactNode } from "react";
-import { Image, Pressable, ScrollView, TextInput, View } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { useEffect, useState, type ComponentProps, type ReactNode } from "react";
+import { Alert, Image, KeyboardAvoidingView, Platform, Pressable, ScrollView, TextInput, View } from "react-native";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 
 type SettingsTab = "account" | "profile" | "password" | "links";
 
@@ -101,6 +103,8 @@ function TabButton({
 
 export default function SettingsScreen() {
   const { isLightMode } = useThemeMode();
+  const insets = useSafeAreaInsets();
+  const { session, setSession } = useSession();
   const [activeTab, setActiveTab] = useState<SettingsTab>("account");
   const [showLanguageModal, setShowLanguageModal] = useState(false);
   const [showTimezoneModal, setShowTimezoneModal] = useState(false);
@@ -115,6 +119,71 @@ export default function SettingsScreen() {
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+  const [linkedFacebook, setLinkedFacebook] = useState(false);
+  const [linkedGoogle, setLinkedGoogle] = useState(false);
+
+  useEffect(() => {
+    if (!session) {
+      router.replace("/");
+      return;
+    }
+
+    const loadProfile = async () => {
+      try {
+        const profile = await api.getProfile(session.userId);
+        setUsername(profile.username);
+        setEmail(profile.email);
+        setWebsite(profile.website);
+        setBio(profile.bio);
+        setLanguage(profile.language);
+        setTimezone(profile.timezone);
+        setLinkedFacebook(profile.linkedFacebook);
+        setLinkedGoogle(profile.linkedGoogle);
+      } catch (error) {
+        Alert.alert("Không tải được cài đặt", error instanceof Error ? error.message : "Đã có lỗi xảy ra.");
+      }
+    };
+
+    loadProfile();
+  }, [session]);
+
+  const saveChanges = async () => {
+    if (!session) return;
+    try {
+      if (activeTab === "account") {
+        const updated = await api.updateAccount(session.userId, username, email);
+        await api.updatePreferences(session.userId, language, timezone);
+        setSession({ ...session, username: updated.username, email: updated.email });
+      } else if (activeTab === "profile") {
+        await api.updateProfile(session.userId, website, bio);
+      } else if (activeTab === "password") {
+        await api.changePassword(session.userId, currentPassword, newPassword, confirmPassword);
+        setCurrentPassword("");
+        setNewPassword("");
+        setConfirmPassword("");
+      }
+      Alert.alert("Thành công", activeTab === "password" ? "Đổi mật khẩu thành công." : "Đã lưu thay đổi.");
+    } catch (error) {
+      Alert.alert("Không thể lưu", error instanceof Error ? error.message : "Đã có lỗi xảy ra.");
+    }
+  };
+
+  const toggleSocialLink = async (provider: "facebook" | "google") => {
+    if (!session) return;
+    try {
+      const nextLinked = provider === "facebook" ? !linkedFacebook : !linkedGoogle;
+      const profile = await api.linkSocial(session.userId, provider, nextLinked);
+      setLinkedFacebook(profile.linkedFacebook);
+      setLinkedGoogle(profile.linkedGoogle);
+      if (provider === "facebook") {
+        Alert.alert("Cập nhật", profile.linkedFacebook ? "Đã liên kết Facebook." : "Đã hủy liên kết Facebook.");
+      } else {
+        Alert.alert("Cập nhật", profile.linkedGoogle ? "Đã liên kết Google." : "Đã hủy liên kết Google.");
+      }
+    } catch (error) {
+      Alert.alert("Không thể cập nhật", error instanceof Error ? error.message : "Đã có lỗi xảy ra.");
+    }
+  };
 
   return (
     <SafeAreaView className={`flex-1 ${isLightMode ? "bg-white" : "bg-[#0B1220]"}`}>
@@ -129,11 +198,18 @@ export default function SettingsScreen() {
         </View>
       </View>
 
-      <ScrollView
-        className="flex-1 px-5 pt-4"
-        showsVerticalScrollIndicator={false}
-        contentContainerStyle={{ paddingBottom: 160 }}
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
+        keyboardVerticalOffset={Platform.OS === "ios" ? 6 : 0}
       >
+        <ScrollView
+          className="flex-1 px-5 pt-4"
+          style={{ flex: 1 }}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={{ paddingBottom: 16 }}
+        >
         {activeTab === "account" && (
           <>
             <View className="mb-8">
@@ -332,11 +408,11 @@ export default function SettingsScreen() {
                   </View>
                   <View>
                     <AppText className={`text-[31px] ${isLightMode ? "text-[#0F172A]" : "text-[#F3F4F6]"}`}>Facebook</AppText>
-                    <AppText className="text-[27px] text-[#8A98AE]">Chưa liên kết</AppText>
+                    <AppText className="text-[27px] text-[#8A98AE]">{linkedFacebook ? "Đã liên kết" : "Chưa liên kết"}</AppText>
                   </View>
                 </View>
-                <Pressable className="rounded-[8px] bg-[#4182F6] px-4 py-2">
-                  <AppText className="text-[26px] text-white">Liên kết</AppText>
+                <Pressable className="rounded-[8px] bg-[#4182F6] px-4 py-2" onPress={() => toggleSocialLink("facebook")}>
+                  <AppText className="text-[26px] text-white">{linkedFacebook ? "Hủy liên kết" : "Liên kết"}</AppText>
                 </Pressable>
               </View>
 
@@ -351,11 +427,11 @@ export default function SettingsScreen() {
                   </View>
                   <View>
                     <AppText className={`text-[31px] ${isLightMode ? "text-[#0F172A]" : "text-[#F3F4F6]"}`}>Google</AppText>
-                    <AppText className="text-[27px] text-[#8A98AE]">Chưa liên kết</AppText>
+                    <AppText className="text-[27px] text-[#8A98AE]">{linkedGoogle ? "Đã liên kết" : "Chưa liên kết"}</AppText>
                   </View>
                 </View>
-                <Pressable className="rounded-[8px] bg-[#4182F6] px-4 py-2">
-                  <AppText className="text-[26px] text-white">Liên kết</AppText>
+                <Pressable className="rounded-[8px] bg-[#4182F6] px-4 py-2" onPress={() => toggleSocialLink("google")}>
+                  <AppText className="text-[26px] text-white">{linkedGoogle ? "Hủy liên kết" : "Liên kết"}</AppText>
                 </Pressable>
               </View>
 
@@ -368,21 +444,22 @@ export default function SettingsScreen() {
             </View>
           </>
         )}
-      </ScrollView>
+        </ScrollView>
 
-      <View className="absolute bottom-[62px] left-0 right-0 px-4">
-        <Pressable className="h-[56px] items-center justify-center rounded-[12px] bg-[#3B82F6]">
-          <AppText className="text-[32px] text-white">
-            {activeTab === "password" ? "Đổi mật khẩu" : "Lưu thay đổi"}
-          </AppText>
-        </Pressable>
-      </View>
+        <View className={`border-t px-4 pt-3 ${isLightMode ? "border-[#E5E7EB] bg-white" : "border-[#1E293B] bg-[#0B111E]"}`}>
+          <Pressable className="h-[56px] items-center justify-center rounded-[12px] bg-[#3B82F6]" onPress={saveChanges}>
+            <AppText className="text-[32px] text-white">
+              {activeTab === "password" ? "Đổi mật khẩu" : "Lưu thay đổi"}
+            </AppText>
+          </Pressable>
+        </View>
 
-      <View
-        className={`absolute bottom-0 left-0 right-0 h-[62px] flex-row items-center border-t pb-2 pt-3 ${
-          isLightMode ? "border-[#1E293B] bg-white" : "border-[#1E293B] bg-[#111827]"
-        }`}
-      >
+        <View
+          className={`min-h-[62px] flex-row items-center border-t pb-2 pt-3 ${
+            isLightMode ? "border-[#1E293B] bg-white" : "border-[#1E293B] bg-[#111827]"
+          }`}
+          style={{ paddingBottom: Math.max(insets.bottom, 10) }}
+        >
         <TabButton
           active={activeTab === "account"}
           label="Tài khoản"
@@ -425,12 +502,12 @@ export default function SettingsScreen() {
           }
           onPress={() => setActiveTab("links")}
         />
-      </View>
+        </View>
+      </KeyboardAvoidingView>
 
       {showLanguageModal && (
-        <>
-          <Pressable className="absolute inset-0 bg-black/70" onPress={() => setShowLanguageModal(false)} />
-          <View className={`absolute bottom-0 left-0 right-0 rounded-t-[32px] pb-10 pt-8 ${isLightMode ? "bg-white" : "bg-[#161B26]"}`}>
+        <KeyboardAvoidingSheet visible onBackdropPress={() => setShowLanguageModal(false)}>
+          <View className={`rounded-t-[32px] pb-10 pt-8 ${isLightMode ? "bg-white" : "bg-[#161B26]"}`}>
             <AppText className={`mb-6 text-center text-[40px] ${isLightMode ? "text-black" : "text-white"}`}>chọn ngôn ngữ</AppText>
             {["Tiếng Việt", "English", "日本語", "中語"].map((item) => (
               <Pressable
@@ -449,13 +526,12 @@ export default function SettingsScreen() {
               </Pressable>
             ))}
           </View>
-        </>
+        </KeyboardAvoidingSheet>
       )}
 
       {showTimezoneModal && (
-        <>
-          <Pressable className="absolute inset-0 bg-black/70" onPress={() => setShowTimezoneModal(false)} />
-          <View className={`absolute bottom-0 left-0 right-0 rounded-t-[32px] pb-10 pt-8 ${isLightMode ? "bg-white" : "bg-[#161B26]"}`}>
+        <KeyboardAvoidingSheet visible onBackdropPress={() => setShowTimezoneModal(false)}>
+          <View className={`rounded-t-[32px] pb-10 pt-8 ${isLightMode ? "bg-white" : "bg-[#161B26]"}`}>
             <AppText className={`mb-6 text-center text-[40px] ${isLightMode ? "text-black" : "text-white"}`}>chọn múi giờ</AppText>
             {[
               "UTC+7 (Việt Nam)",
@@ -480,13 +556,12 @@ export default function SettingsScreen() {
               </Pressable>
             ))}
           </View>
-        </>
+        </KeyboardAvoidingSheet>
       )}
 
       {showAvatarPicker && (
-        <>
-          <Pressable className="absolute inset-0 bg-black/70" onPress={() => setShowAvatarPicker(false)} />
-          <View className={`absolute bottom-0 left-0 right-0 rounded-t-[28px] ${isLightMode ? "bg-white" : "bg-[#1B2333]"}`}>
+        <KeyboardAvoidingSheet visible onBackdropPress={() => setShowAvatarPicker(false)}>
+          <View className={`rounded-t-[28px] ${isLightMode ? "bg-white" : "bg-[#1B2333]"}`}>
             <View className="items-center pt-4">
               <View className="h-1 w-8 rounded-full bg-[#DEDEE1]" />
             </View>
@@ -523,7 +598,7 @@ export default function SettingsScreen() {
               <Image source={{ uri: catImage }} className="h-[136px] w-[136px]" />
             </View>
           </View>
-        </>
+        </KeyboardAvoidingSheet>
       )}
     </SafeAreaView>
   );

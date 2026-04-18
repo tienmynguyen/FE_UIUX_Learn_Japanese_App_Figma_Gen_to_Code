@@ -1,9 +1,24 @@
 import { AppText } from "@/components";
+import { useSession } from "@/hooks/useSession";
+import { api } from "@/services/api";
 import { FontAwesome, AntDesign, Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { useRef, useState } from "react";
-import { Animated, Easing, Pressable, TextInput, View, ImageBackground, Image, Text } from "react-native";
+import {
+  Alert,
+  Animated,
+  Easing,
+  Image,
+  ImageBackground,
+  KeyboardAvoidingView,
+  Platform,
+  Pressable,
+  ScrollView,
+  Text,
+  TextInput,
+  View,
+} from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 const BG_IMAGE_URI = "https://www.figma.com/api/mcp/asset/a2b8bf83-0e64-43bc-81fb-39e90fa78c0a";
@@ -50,6 +65,11 @@ function SocialLoginButton({ provider }: { provider: "facebook" | "google" }) {
 export default function LoginScreen() {
   const [introStep, setIntroStep] = useState(0);
   const [authMode, setAuthMode] = useState<"signin" | "signup">("signin");
+  const [username, setUsername] = useState("");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const { setSession } = useSession();
   const formOpacity = useRef(new Animated.Value(1)).current;
   const formTranslateY = useRef(new Animated.Value(0)).current;
 
@@ -84,6 +104,35 @@ export default function LoginScreen() {
         }),
       ]).start();
     });
+  };
+
+  const handleSubmit = async () => {
+    if (isSubmitting) return;
+    if (!email.trim() || !password.trim() || (authMode === "signup" && !username.trim())) {
+      Alert.alert("Thiếu thông tin", "Vui lòng nhập đầy đủ thông tin.");
+      return;
+    }
+
+    try {
+      setIsSubmitting(true);
+      const authResponse =
+        authMode === "signin"
+          ? await api.signIn(email.trim(), password)
+          : await api.signUp(username.trim(), email.trim(), password);
+
+      setSession({
+        userId: authResponse.userId,
+        username: authResponse.username,
+        email: authResponse.email,
+        token: authResponse.token,
+        planId: authResponse.planId,
+      });
+      router.replace("/dashboard");
+    } catch (error) {
+      Alert.alert("Không thể xác thực", error instanceof Error ? error.message : "Đã có lỗi xảy ra.");
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   if (introStep < INTRO_SLIDES.length) {
@@ -139,7 +188,18 @@ export default function LoginScreen() {
     <ImageBackground source={{ uri: BG_IMAGE_URI }} className="flex-1" resizeMode="cover">
       <View className="flex-1 bg-black/30">
         <SafeAreaView className="flex-1">
-          <View className="flex-1 px-[30px] pb-8">
+          <KeyboardAvoidingView
+            className="flex-1"
+            behavior={Platform.OS === "ios" ? "padding" : "height"}
+            keyboardVerticalOffset={Platform.OS === "ios" ? 8 : 0}
+          >
+            <ScrollView
+              className="flex-1"
+              keyboardShouldPersistTaps="handled"
+              keyboardDismissMode="on-drag"
+              showsVerticalScrollIndicator={false}
+              contentContainerStyle={{ flexGrow: 1, paddingHorizontal: 30, paddingBottom: 32 }}
+            >
             <View className="mt-[120px] items-center">
               <AppText
                 weight="bold"
@@ -176,12 +236,16 @@ export default function LoginScreen() {
               <View className="gap-4">
                 {authMode === "signup" ? (
                   <TextInput
+                    value={username}
+                    onChangeText={setUsername}
                     placeholder="Tên người dùng"
                     placeholderTextColor="#9CA3AF"
                     className="h-[52px] rounded-[14px] border border-border bg-white px-4 text-[15px] text-text"
                   />
                 ) : null}
                 <TextInput
+                  value={email}
+                  onChangeText={setEmail}
                   placeholder="Email"
                   placeholderTextColor="#9CA3AF"
                   keyboardType="email-address"
@@ -189,6 +253,8 @@ export default function LoginScreen() {
                   className="h-[52px] rounded-[14px] border border-border bg-white px-4 text-[15px] text-text"
                 />
                 <TextInput
+                  value={password}
+                  onChangeText={setPassword}
                   placeholder="Password"
                   placeholderTextColor="#9CA3AF"
                   secureTextEntry
@@ -196,10 +262,10 @@ export default function LoginScreen() {
                 />
                 <Pressable
                   className="mt-2 h-[52px] items-center justify-center rounded-full bg-primary shadow-[0px_4px_14px_rgba(0,98,155,0.4)]"
-                  onPress={() => router.push("/dashboard")}
+                  onPress={handleSubmit}
                 >
                   <AppText weight="bold" className="text-[15px] tracking-[0.4px] text-white">
-                    {authMode === "signin" ? "SIGN IN" : "SIGN UP"}
+                    {isSubmitting ? "ĐANG XỬ LÝ..." : authMode === "signin" ? "SIGN IN" : "SIGN UP"}
                   </AppText>
                 </Pressable>
               </View>
@@ -234,7 +300,8 @@ export default function LoginScreen() {
                 </AppText>
               </AppText>
             </View>
-          </View>
+            </ScrollView>
+          </KeyboardAvoidingView>
         </SafeAreaView>
       </View>
     </ImageBackground>

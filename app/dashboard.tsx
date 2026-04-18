@@ -1,11 +1,13 @@
 import { AppText } from "@/components";
+import { useSession } from "@/hooks/useSession";
 import { useThemeMode } from "@/hooks/useThemeMode";
+import { api, type DashboardResponse } from "@/services/api";
 import { Ionicons, Feather, AntDesign, MaterialCommunityIcons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import type { ReactNode } from "react";
-import { useState } from "react";
-import { Image, Pressable, ScrollView, TextInput, View } from "react-native";
+import { useEffect, useState } from "react";
+import { Alert, Image, KeyboardAvoidingView, Platform, Pressable, ScrollView, TextInput, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 type DeckCardProps = {
@@ -21,23 +23,6 @@ type DeckCardProps = {
 
 const profileImageUri = "https://www.figma.com/api/mcp/asset/b7085512-ed2e-46f8-80fb-3861882ec241";
 const popupProfileImageUri = "https://www.figma.com/api/mcp/asset/f6367b6f-3e56-4837-bc51-d7b90d57d895";
-const chatUsers = [
-  { name: "Khoi Huynh", email: "khoihuyh152004@gmail.com" },
-  { name: "Minh Huyền", email: "huyen@gmail.com" },
-  { name: "NGUYỄN TÔN MINH HUYỀN", email: "huyenmt.2it@vku.udn.vn" },
-  { name: "Phạm Hoàng Bảo", email: "27baokpham27@gmail.com" },
-];
-const notificationItems = Array.from({ length: 5 }).map(() => ({
-  title: "Đăng nhập mới từ Máy tính - Windows - Postman",
-  time: "10 phút trước",
-}));
-const searchResults = [
-  { kanji: "開発", hira: "【かいはつ】", meaning: "development, cultivation, application" },
-  { kanji: "開発途上国", hira: "【かいはつとじょうこく】", meaning: "developing country" },
-  { kanji: "開発者", hira: "【かいはつしゃ】", meaning: "developer" },
-  { kanji: "開発元", hira: "【かいはつもと】", meaning: "developer (of software, video games, etc.)" },
-  { kanji: "開発部", hira: "【かいはつぶ】", meaning: "development department" },
-];
 
 function QuickFeatureCard({
   title,
@@ -94,16 +79,39 @@ function DeckCard({ title, subtitle, level, count, date, levelColor, onPress, is
 }
 
 export default function DashboardScreen() {
+  const { session, clearSession } = useSession();
   const [isProfilePopupOpen, setIsProfilePopupOpen] = useState(false);
   const [showChatPopup, setShowChatPopup] = useState(false);
   const [showNotificationPopup, setShowNotificationPopup] = useState(false);
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
+  const [dashboardData, setDashboardData] = useState<DashboardResponse | null>(null);
   const { isLightMode, toggleMode } = useThemeMode();
   const showSearchResults = searchQuery.trim().length > 0;
-  const filteredResults = searchResults.filter((item) =>
-    `${item.kanji} ${item.hira} ${item.meaning}`.toLowerCase().includes(searchQuery.trim().toLowerCase())
-  );
+
+  useEffect(() => {
+    if (!session) {
+      router.replace("/");
+      return;
+    }
+
+    const timeout = setTimeout(async () => {
+      try {
+        const data = await api.getDashboard(session.userId, searchQuery.trim());
+        setDashboardData(data);
+      } catch (error) {
+        Alert.alert("Không tải được dữ liệu", error instanceof Error ? error.message : "Đã có lỗi xảy ra.");
+      }
+    }, 200);
+
+    return () => clearTimeout(timeout);
+  }, [searchQuery, session]);
+
+  const searchResults = dashboardData?.searchResults ?? [];
+  const notificationItems = dashboardData?.notifications ?? [];
+  const chatUsers = dashboardData?.chatUsers ?? [];
+  const myDecks = dashboardData?.myDecks ?? [];
+  const unreadNotificationCount = notificationItems.filter((item) => item.unread).length;
 
   const closeAllPopups = () => {
     setIsProfilePopupOpen(false);
@@ -112,10 +120,25 @@ export default function DashboardScreen() {
     setShowLogoutConfirm(false);
   };
 
+  const handleLogout = async () => {
+    try {
+      await api.logout();
+    } catch {
+      // Ignore logout API errors because user already wants to leave session.
+    } finally {
+      clearSession();
+      router.replace("/");
+    }
+  };
+
   return (
     <SafeAreaView className={`relative flex-1 ${isLightMode ? "bg-white" : "bg-[#20293C]"}`}>
       <StatusBar style={isLightMode ? "dark" : "light"} />
-      <View className="flex-1">
+      <KeyboardAvoidingView
+        className="flex-1"
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
+        keyboardVerticalOffset={Platform.OS === "ios" ? 4 : 0}
+      >
         <View className="px-4 pb-2 pt-1">
           <View className="h-[41px] flex-row items-center">
             <View
@@ -172,7 +195,7 @@ export default function DashboardScreen() {
               >
                 <Ionicons name="notifications-outline" size={20} color="white" />
                 <View className="absolute right-[-2px] top-[-2px] h-[16px] min-w-[16px] items-center justify-center rounded-full bg-[#EF4444] px-1">
-                  <AppText className="text-[10px] text-white">7</AppText>
+                  <AppText className="text-[10px] text-white">{unreadNotificationCount}</AppText>
                 </View>
               </Pressable>
               <Pressable
@@ -228,27 +251,37 @@ export default function DashboardScreen() {
             isLightMode ? "bg-[#D6F2FF]" : "bg-[#20293C]"
           }`}
         >
-          <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 80 }}>
+          <ScrollView
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}
+            contentContainerStyle={{ paddingBottom: 80 }}
+          >
             <View className="mb-5 flex-row items-center justify-between">
               <AppText className={`text-[40px] ${isLightMode ? "text-[#0A0A0A]" : "text-white"}`}>
                 Bộ flashcard của tôi
               </AppText>
-              <Pressable className="h-[38px] flex-row items-center rounded-full bg-[#3B82F6] px-4">
+              <Pressable
+                className="h-[38px] flex-row items-center rounded-full bg-[#3B82F6] px-4"
+                onPress={() => router.push({ pathname: "/flashcards", params: { createDeck: "1" } })}
+              >
                 <AntDesign name="plus" size={16} color={isLightMode ? "#000000" : "white"} />
                 <AppText className={`ml-2 text-[30px] ${isLightMode ? "text-black" : "text-white"}`}>Tạo mới</AppText>
               </Pressable>
             </View>
 
-            <DeckCard
-              title="29/03"
-              subtitle="Không có mô tả"
-              level="Cấp độ: N5"
-              count="62 thẻ"
-              date="29/3/2026"
-              levelColor="#3B82F6"
-              onPress={() => router.push("/flashcards")}
-              isLightMode={isLightMode}
-            />
+            {(myDecks.length > 0 ? myDecks : []).map((deck) => (
+              <DeckCard
+                key={deck.id}
+                title={deck.title}
+                subtitle={deck.description || "Không có mô tả"}
+                level={`Cấp độ: ${deck.level}`}
+                count={`${deck.cards.length} thẻ`}
+                date={deck.createdDate}
+                levelColor="#3B82F6"
+                onPress={() => router.push({ pathname: "/flashcards-practice", params: { deckId: deck.id } })}
+                isLightMode={isLightMode}
+              />
+            ))}
 
             <AppText className={`mb-4 mt-8 text-[40px] ${isLightMode ? "text-[#0A0A0A]" : "text-white"}`}>
               Flashcards bạn có thể làm
@@ -278,14 +311,18 @@ export default function DashboardScreen() {
             </View>
           </ScrollView>
         </View>
-      </View>
+      </KeyboardAvoidingView>
 
       {showSearchResults && (
         <View
           className={`absolute left-0 right-0 top-[84px] bottom-0 ${isLightMode ? "bg-white" : "bg-[#0D1522]"}`}
         >
-          <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 32 }}>
-            {(filteredResults.length > 0 ? filteredResults : searchResults).map((item) => (
+          <ScrollView
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}
+            contentContainerStyle={{ paddingBottom: 32 }}
+          >
+            {searchResults.map((item) => (
               <View key={item.kanji} className={`border-b px-3 py-4 ${isLightMode ? "border-[#E2E8F0]" : "border-[#1E293B]"}`}>
                 <View className="flex-row items-start justify-between">
                   <View className="flex-1 pr-3">
@@ -323,12 +360,12 @@ export default function DashboardScreen() {
         >
           <View className="mb-3 flex-row items-center justify-between px-2">
             <AppText className={`text-[36px] ${isLightMode ? "text-black" : "text-white"}`}>Thông báo</AppText>
-            <AppText className="text-[24px] text-[#38BDF8]">7 mới</AppText>
+            <AppText className="text-[24px] text-[#38BDF8]">{unreadNotificationCount} mới</AppText>
           </View>
           <View className="gap-3">
-            {notificationItems.map((item, idx) => (
+            {notificationItems.map((item) => (
               <View
-                key={`${item.time}-${idx}`}
+                key={item.id}
                 className={`rounded-[16px] px-4 py-3 ${isLightMode ? "bg-white" : "bg-[#162A4D]"}`}
               >
                 <View className="flex-row items-start">
@@ -386,10 +423,10 @@ export default function DashboardScreen() {
               <Image source={{ uri: popupProfileImageUri }} className="h-[52px] w-[52px] rounded-full" />
               <View>
                 <AppText weight="bold" className={`text-[26px] ${isLightMode ? "text-[#0F172A]" : "text-[#F8FAFC]"}`}>
-                  Khoi Huynh
+                  {session?.username ?? "User"}
                 </AppText>
                 <AppText weight="medium" className={`text-[23px] ${isLightMode ? "text-[#475569]" : "text-[#DCDCDC]"}`}>
-                  khoihuynh152004@gmail.com
+                  {session?.email ?? ""}
                 </AppText>
                 <AppText className="text-[22px] text-[#8F9EB3]">Tài khoản miễn phí</AppText>
               </View>
@@ -488,7 +525,7 @@ export default function DashboardScreen() {
               className="h-[38px] w-[101px] items-center justify-center rounded-[10px] bg-[#C90000]"
               onPress={() => {
                 setShowLogoutConfirm(false);
-                router.replace("/");
+                handleLogout();
               }}
             >
               <AppText weight="bold" className="text-[16px] text-[#F8FAFC]">
